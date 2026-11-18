@@ -5,9 +5,9 @@ import {
   Newspaper, Pencil, Plus, RotateCcw, Save, Trash2, Upload, UsersRound, X,
 } from 'lucide-react';
 import { database } from '../db';
-import { useData } from '../hooks';
+import { useData, useHydration } from '../hooks';
 import { Field } from '../components/Field';
-import { logout } from '../auth';
+import { useAuth } from '../auth';
 import { defaultPositions, flag, getLineup } from '../formations';
 import { newsArt, resolvePhoto } from '../media';
 import { formations } from '../seed';
@@ -22,6 +22,7 @@ const countries = ['England', 'Brazil', 'Russia', 'Serbia', 'Italy', 'Japan', 'D
 
 export function Admin() {
   const { t, lang } = useI18n();
+  const { user, logout } = useAuth();
   const tabs: Array<{ id: Tab; label: string; icon: typeof UsersRound }> = [
     { id: 'players', label: t('Players'), icon: UsersRound },
     { id: 'club', label: t('Club info'), icon: Building2 },
@@ -30,6 +31,7 @@ export function Admin() {
     { id: 'system', label: t('Database'), icon: Database },
   ];
   const data = useData(() => ({ players: database.getPlayers(), club: database.getClub(), tactics: database.getTactics(), news: database.getNews() }));
+  const hydrated = useHydration();
   const [tab, setTab] = useState<Tab>('players');
   const [toast, setToast] = useState('');
   const [playerForm, setPlayerForm] = useState<Player | null>(null);
@@ -42,7 +44,7 @@ export function Admin() {
   const navigate = useNavigate();
 
   const notify = (message: string) => setToast(message);
-  useEffect(() => { setClubForm(database.getClub()); }, [lang]);
+  useEffect(() => { setClubForm(database.getClub()); }, [lang, hydrated]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(''), 3200);
@@ -54,31 +56,43 @@ export function Admin() {
     const current = database.getTactic(formation);
     setDraft(current && Object.keys(current.player_positions).length ? current.player_positions : defaultPositions(formation, database.getPlayers()));
     setTacticDescription(current?.description ?? '');
-  }, [formation, lang]);
+  }, [formation, lang, hydrated]);
 
   const lineup = useMemo(() => getLineup(formation, data.players, draft), [formation, data.players, draft]);
 
-  const savePlayer = (e: FormEvent) => {
+  const savePlayer = async (e: FormEvent) => {
     e.preventDefault();
     if (!playerForm) return;
     if (!playerForm.name.trim() || !playerForm.surname.trim() || !playerForm.country.trim()) { notify(t('Please fill in name, surname and country.')); return; }
-    database.upsertPlayer({ ...playerForm, number: Number(playerForm.number) || 1, age: Number(playerForm.age) || 18, name: playerForm.name.trim(), surname: playerForm.surname.trim() });
-    notify(playerForm.id ? t('Player updated successfully.') : t('Player added to the squad.'));
-    setPlayerForm(null);
+    try {
+      await database.upsertPlayer({ ...playerForm, number: Number(playerForm.number) || 1, age: Number(playerForm.age) || 18, name: playerForm.name.trim(), surname: playerForm.surname.trim() });
+      notify(playerForm.id ? t('Player updated successfully.') : t('Player added to the squad.'));
+      setPlayerForm(null);
+    } catch {
+      notify(t('Could not save changes. Please try again.'));
+    }
   };
 
-  const saveNews = (e: FormEvent) => {
+  const saveNews = async (e: FormEvent) => {
     e.preventDefault();
     if (!newsForm) return;
     if (!newsForm.title.trim()) { notify(t('Please enter a news title.')); return; }
-    database.upsertNews({ ...newsForm, title: newsForm.title.trim() });
-    notify(newsForm.id ? t('News updated successfully.') : t('News published successfully.'));
-    setNewsForm(null);
+    try {
+      await database.upsertNews({ ...newsForm, title: newsForm.title.trim() });
+      notify(newsForm.id ? t('News updated successfully.') : t('News published successfully.'));
+      setNewsForm(null);
+    } catch {
+      notify(t('Could not save changes. Please try again.'));
+    }
   };
 
-  const saveTactic = () => {
-    database.saveTactic({ id: tactic?.id ?? `t-${formation}`, formation, player_positions: draft, description: tacticDescription });
-    notify(`${formation} ${t('saved.')}`);
+  const saveTactic = async () => {
+    try {
+      await database.saveTactic({ id: tactic?.id ?? `t-${formation}`, formation, player_positions: draft, description: tacticDescription });
+      notify(`${formation} ${t('saved.')}`);
+    } catch {
+      notify(t('Could not save changes. Please try again.'));
+    }
   };
 
   const exportData = () => {
@@ -95,7 +109,7 @@ export function Admin() {
       <div className="container">
         <div className="admin__top">
           <div><span className="eyebrow eyebrow--line"><span className="dot" /> {t('CONTROL CENTER')}</span><h1>{t('Admin')} <em>{t('Panel')}</em></h1></div>
-          <button className="btn btn--outline" onClick={() => { logout(); navigate('/'); }}><LogOut size={17} /> {t('Logout')}</button>
+          <button className="btn btn--outline" onClick={async () => { await logout(); navigate('/'); }}><LogOut size={17} /> {t('Logout')}</button>
         </div>
         <div className="admin__layout">
           <aside className="admin__nav">
@@ -104,7 +118,7 @@ export function Admin() {
                 <Icon size={18} /> {label}
               </button>
             ))}
-            <div className="admin__nav-foot"><span>{t('Signed in as')}</span><strong>admin</strong></div>
+            <div className="admin__nav-foot"><span>{t('Signed in as')}</span><strong>{user?.name || 'admin'}</strong></div>
           </aside>
 
           <div className="admin__content">
@@ -122,7 +136,7 @@ export function Admin() {
                           <td><span className="pill">{t(p.position)}</span></td>
                           <td>{flag(p.country)} {t(p.country)}</td>
                           <td>{p.age}</td>
-                          <td><div className="actions"><button className="icon-btn" onClick={() => setPlayerForm(p)} aria-label={`Edit ${p.surname}`}><Pencil size={16} /></button><button className="icon-btn icon-btn--danger" onClick={() => { if (window.confirm(`${t('Delete')} ${p.name} ${p.surname}?`)) { database.deletePlayer(p.id); notify(t('Player deleted.')); } }} aria-label={`Delete ${p.surname}`}><Trash2 size={16} /></button></div></td>
+                          <td><div className="actions"><button className="icon-btn" onClick={() => setPlayerForm(p)} aria-label={`Edit ${p.surname}`}><Pencil size={16} /></button><button className="icon-btn icon-btn--danger" onClick={async () => { if (window.confirm(`${t('Delete')} ${p.name} ${p.surname}?`)) { try { await database.deletePlayer(p.id); notify(t('Player deleted.')); } catch { notify(t('Could not save changes. Please try again.')); } } }} aria-label={`Delete ${p.surname}`}><Trash2 size={16} /></button></div></td>
                         </tr>
                       ))}
                     </tbody>
@@ -135,7 +149,7 @@ export function Admin() {
             {tab === 'club' && (
               <div className="panel">
                 <div className="panel__head"><div><h2>{t('Club information')}</h2><p>{t('Everything on the Club page and homepage updates after saving.')}</p></div></div>
-                <form className="form" onSubmit={e => { e.preventDefault(); database.updateClub(clubForm); notify(t('Club information saved.')); }}>
+                <form className="form" onSubmit={async e => { e.preventDefault(); try { await database.updateClub(clubForm); notify(t('Club information saved.')); } catch { notify(t('Could not save changes. Please try again.')); } }}>
                   <div className="form-grid">
                     <label><span>{t('Club name')}</span><input value={clubForm.name} onChange={e => setClubForm({ ...clubForm, name: e.target.value })} required /></label>
                     <label><span>{t('Slogan')}</span><input value={clubForm.slogan} onChange={e => setClubForm({ ...clubForm, slogan: e.target.value })} required /></label>
@@ -180,7 +194,7 @@ export function Admin() {
                     <div className="news-admin__row" key={n.id}>
                       <img src={n.image || newsArt(0)} alt="" />
                       <div><span className="muted small">{new Date(n.created_at).toLocaleDateString('en-GB')}</span><h4>{n.title}</h4><p>{n.description.slice(0, 110)}{n.description.length > 110 ? '…' : ''}</p></div>
-                      <div className="actions"><button className="icon-btn" onClick={() => setNewsForm(n)} aria-label={`Edit ${n.title}`}><Pencil size={16} /></button><button className="icon-btn icon-btn--danger" onClick={() => { if (window.confirm(`${t('Delete')} "${n.title}"?`)) { database.deleteNews(n.id); notify(t('News deleted.')); } }} aria-label={`Delete ${n.title}`}><Trash2 size={16} /></button></div>
+                      <div className="actions"><button className="icon-btn" onClick={() => setNewsForm(n)} aria-label={`Edit ${n.title}`}><Pencil size={16} /></button><button className="icon-btn icon-btn--danger" onClick={async () => { if (window.confirm(`${t('Delete')} "${n.title}"?`)) { try { await database.deleteNews(n.id); notify(t('News deleted.')); } catch { notify(t('Could not save changes. Please try again.')); } } }} aria-label={`Delete ${n.title}`}><Trash2 size={16} /></button></div>
                     </div>
                   ))}
                   {data.news.length === 0 && <div className="empty">{t('No news published yet.')}</div>}
@@ -190,7 +204,7 @@ export function Admin() {
 
             {tab === 'system' && (
               <div className="panel">
-                <div className="panel__head"><div><h2>{t('Database')}</h2><p>{t('All data is stored persistently in this browser and syncs across tabs.')}</p></div></div>
+                <div className="panel__head"><div><h2>{t('Database')}</h2><p>{t('All data is stored in Supabase and synced between devices.')}</p></div></div>
                 <div className="db-stats">
                   <div><UsersRound size={20} /><strong>{data.players.length}</strong><span>{t('Players')}</span></div>
                   <div><Newspaper size={20} /><strong>{data.news.length}</strong><span>{t('News')}</span></div>
@@ -202,11 +216,11 @@ export function Admin() {
                   <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={async e => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    try { database.importAll(await file.text()); setClubForm(database.getClub()); notify(t('Database imported successfully.')); }
+                    try { await database.importAll(await file.text()); setClubForm(database.getClub()); notify(t('Database imported successfully.')); }
                     catch { notify(t('Import failed: invalid JSON file.')); }
                     e.target.value = '';
                   }} />
-                  <button className="btn btn--danger" onClick={() => { if (window.confirm(t('Reset everything to demo data? This cannot be undone.'))) { database.reset(); setClubForm(database.getClub()); notify(t('Database reset to demo data.')); } }}><RotateCcw size={17} /> {t('Reset demo data')}</button>
+                  <button className="btn btn--danger" onClick={async () => { if (window.confirm(t('Reset everything to demo data? This cannot be undone.'))) { try { await database.reset(); setClubForm(database.getClub()); notify(t('Database reset to demo data.')); } catch { notify(t('Could not save changes. Please try again.')); } } }}><RotateCcw size={17} /> {t('Reset demo data')}</button>
                 </div>
               </div>
             )}
