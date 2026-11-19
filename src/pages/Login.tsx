@@ -3,7 +3,6 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, LockKeyhole, UserRound } from 'lucide-react';
 import { Crest } from '../components/Brand';
 import { useAuth } from '../auth';
-import { isNeonEnabled } from '../neon';
 import { LanguageSwitcher, useI18n } from '../i18n';
 
 export function Login() {
@@ -45,9 +44,7 @@ export function Login() {
           {error && <div className="form-error">{error}</div>}
           <button type="submit" className="btn btn--gold btn--block" disabled={busy}>{busy ? t('Signing in…') : t('Sign in')}</button>
         </form>
-        {isNeonEnabled
-          ? <div className="login-hint">{t('Sign in with the administrator credentials from your environment settings.')}</div>
-          : <div className="login-hint">{t('Demo access:')} <strong>admin</strong> / <strong>titans2026</strong></div>}
+        <div className="login-hint">{t('Sign in with the administrator credentials from your environment settings.')}</div>
         <Link to="/" className="link-arrow"><ArrowLeft size={15} /> {t('Back to website')}</Link>
       </div>
     </div>

@@ -1,4 +1,18 @@
 import { chromium } from 'playwright';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+function credential(name, fallback) {
+  if (process.env[name]) return process.env[name];
+  const file = fileURLToPath(new URL('../.env.local', import.meta.url));
+  if (!existsSync(file)) return fallback;
+  const line = readFileSync(file, 'utf8').split(/\r?\n/).find(l => l.trimStart().startsWith(`${name}=`));
+  if (!line) return fallback;
+  return line.slice(line.indexOf('=') + 1).trim().replace(/^['"]|['"]$/g, '');
+}
+
+const adminLogin = credential('VITE_ADMIN_LOGIN', 'admin');
+const adminPassword = credential('VITE_ADMIN_PASSWORD', 'titans2026');
 
 const base = 'http://127.0.0.1:5173';
 const errors = [];
@@ -32,8 +46,8 @@ await page.screenshot({ path: 'C:/Users/user/AppData/Local/Temp/opencode/titans-
 
 await page.goto(`${base}/admin`, { waitUntil: 'networkidle' });
 log('admin protected', page.url().includes('/login'), page.url());
-await page.getByPlaceholder('Enter login').fill('admin');
-await page.getByPlaceholder('Enter password').fill('titans2026');
+await page.getByPlaceholder('Enter login').fill(adminLogin);
+await page.getByPlaceholder('Enter password').fill(adminPassword);
 await page.getByRole('button', { name: 'Sign in' }).click();
 await page.waitForURL('**/admin');
 log('admin login', page.url().endsWith('/admin'));
