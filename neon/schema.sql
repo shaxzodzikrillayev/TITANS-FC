@@ -1,5 +1,5 @@
--- TITANS FC · Supabase schema
--- Run this once in Supabase → SQL Editor.
+-- TITANS FC · Neon schema
+-- Run this once in the Neon SQL Editor on the branch you want to use.
 -- Ids are text because the app uses values like "p-1", "t-1", "n-1" and short
 -- generated ids. (lang, id) is the primary key: every language keeps its own dataset.
 
@@ -52,34 +52,23 @@ create table if not exists public.news (
   primary key (lang, id)
 );
 
+-- Revision counter: the SPA polls this table to notice changes made from
+-- another browser/device (Neon has no Realtime push).
+create table if not exists public.sync_state (
+  lang text primary key,
+  rev bigint not null default 0
+);
+
+insert into public.sync_state (lang, rev) values ('ru', 0), ('uz', 0), ('en', 0)
+on conflict (lang) do nothing;
+
 create index if not exists players_lang_idx on public.players (lang);
 create index if not exists tactics_lang_idx on public.tactics (lang);
 create index if not exists news_lang_idx on public.news (lang);
 
--- Row Level Security: everyone may read the public website, only signed-in
--- administrators may write. The anon key is public, so these policies are the
--- actual access control.
-alter table public.players enable row level security;
-alter table public.club enable row level security;
-alter table public.tactics enable row level security;
-alter table public.news enable row level security;
-
-drop policy if exists "players read" on public.players;
-create policy "players read" on public.players for select using (true);
-drop policy if exists "players write" on public.players;
-create policy "players write" on public.players for all to authenticated using (true) with check (true);
-
-drop policy if exists "club read" on public.club;
-create policy "club read" on public.club for select using (true);
-drop policy if exists "club write" on public.club;
-create policy "club write" on public.club for all to authenticated using (true) with check (true);
-
-drop policy if exists "tactics read" on public.tactics;
-create policy "tactics read" on public.tactics for select using (true);
-drop policy if exists "tactics write" on public.tactics;
-create policy "tactics write" on public.tactics for all to authenticated using (true) with check (true);
-
-drop policy if exists "news read" on public.news;
-create policy "news read" on public.news for select using (true);
-drop policy if exists "news write" on public.news;
-create policy "news write" on public.news for all to authenticated using (true) with check (true);
+-- Recommended: use a dedicated role for the connection string instead of the
+-- project owner. For example:
+--   create role titans_app login password 'change-me';
+--   grant usage on schema public to titans_app;
+--   grant select, insert, update, delete on public.players, public.club,
+--     public.tactics, public.news, public.sync_state to titans_app;

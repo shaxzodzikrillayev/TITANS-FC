@@ -13,37 +13,38 @@ npm run dev
 
 Админка: `http://localhost:5173/admin`
 
-Без Supabase (см. ниже) логин/пароль по умолчанию: **admin / titans2026**. Их можно переопределить через `VITE_ADMIN_LOGIN` и `VITE_ADMIN_PASSWORD` в файле `.env`.
+Без Neon (см. ниже) логин/пароль по умолчанию: **admin / titans2026**. Их можно переопределить через `VITE_ADMIN_LOGIN` и `VITE_ADMIN_PASSWORD` в файле `.env`.
 
 ## Хранилище данных
 
-Данные хранятся в **Supabase** (PostgreSQL). Если `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` не заданы, приложение автоматически использует встроенную базу на `localStorage` — сайт и тесты работают без внешних сервисов.
+Данные хранятся в **Neon** (serverless PostgreSQL). Если `VITE_NEON_CONNECTION_STRING` не задан, приложение автоматически использует встроенную базу на `localStorage` — сайт и тесты работают без внешних сервисов.
 
-### Подключение Supabase
+### Подключение Neon
 
-1. Создайте проект на [supabase.com](https://supabase.com).
-2. Откройте **SQL Editor** и выполните файл [`supabase/schema.sql`](supabase/schema.sql) — он создаёт таблицы `players`, `club`, `tactics`, `news` и политики доступа (RLS): чтение для всех, запись только для авторизованных.
-3. **Authentication → Users → Add user**: создайте администратора, например `admin@titansfc.local` с паролем. Подтверждение email можно отключить в **Authentication → Providers → Email**.
-4. **Settings → API**: скопируйте `Project URL` и `anon public key`.
-5. Создайте `.env.local` (он в `.gitignore`) на основе `.env.example`:
+1. Создайте проект и базу на [neon.com](https://neon.com).
+2. Откройте **SQL Editor** и выполните файл [`neon/schema.sql`](neon/schema.sql) — он создаёт таблицы `players`, `club`, `tactics`, `news` и `sync_state` (счётчик ревизий для синхронизации между устройствами).
+3. В разделе **Connect** скопируйте **pooled connection string** для нужной ветки/базы.
+4. Создайте `.env.local` (он в `.gitignore`) на основе `.env.example`:
    ```env
-   VITE_SUPABASE_URL=https://xxxx.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
+   VITE_NEON_CONNECTION_STRING=postgresql://user:password@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require
+   VITE_ADMIN_LOGIN=admin
+   VITE_ADMIN_PASSWORD=your-strong-password
    VITE_ADMIN_EMAIL=admin@titansfc.local
    ```
-6. Запустите `npm run dev`. При первом входе в админку демо-данные автоматически загрузятся в Supabase.
-7. На хостинге (Vercel/Netlify и т.п.) добавьте те же переменные окружения.
+5. Запустите `npm run dev`. При первом входе в админку демо-данные автоматически загрузятся в Neon.
+6. На хостинге (Vercel/Netlify и т.п.) добавьте те же переменные окружения.
 
-Вход в админку: введите email аккаунта Supabase (или просто `admin` — он будет заменён на `VITE_ADMIN_EMAIL`) и пароль этого аккаунта.
+Вход в админку: `VITE_ADMIN_LOGIN` (или `VITE_ADMIN_EMAIL` / её локальная часть) и `VITE_ADMIN_PASSWORD`. Neon не предоставляет встроенный Auth, поэтому проверка логина выполняется на клиенте.
 
 ### Как устроено
 
-- `src/supabase.ts` — создание клиента Supabase из переменных окружения.
-- `src/db.ts` — слой данных: синхронный кэш в памяти (страницы читают данные как раньше), запись идёт в Supabase; при старте кэш загружается из базы, изменения синхронизируются между вкладками и устройствами через Realtime.
-- `src/auth.tsx` — Supabase Auth (или локальная проверка логина/пароля, если Supabase не настроен).
-- `supabase/schema.sql` — схема таблиц и RLS-политики.
+- `src/neon.ts` — HTTP-клиент `@neondatabase/serverless`, создаётся из `VITE_NEON_CONNECTION_STRING`.
+- `src/db.ts` — слой данных: синхронный кэш в памяти (страницы читают данные как раньше), запись идёт SQL-запросами в Neon; при старте кэш загружается из базы, а изменения между вкладками/устройствами синхронизируются опросом таблицы `sync_state` раз в 5 секунд.
+- `src/auth.tsx` + `src/session.ts` — локальная сессия администратора; после входа запускается повторная загрузка всех языков.
+- `neon/schema.sql` — схема таблиц.
 - Каждая языковая версия (`ru`, `uz`, `en`) — отдельный набор строк с колонкой `lang`.
-- `anon`-ключ публичный: доступ ограничен политиками RLS. Любой созданный пользователь Supabase получает право редактировать данные, поэтому создавайте только доверенные аккаунты.
+
+> **Важно про безопасность.** Строка подключения Neon попадает в клиентский бандл: любой посетитель сайта сможет прочитать её в DevTools и получить доступ к базе от имени этого пользователя. Для продакшена используйте отдельного пользователя PostgreSQL с минимальными правами и/или вынесите SQL-запросы на сервер (backend/Edge Function) либо перейдите на Neon Data API с RLS. Проверка логина в `src/auth.tsx` — только удобство интерфейса, а не защита базы.
 
 Интерфейс и демо-контент переведены на русский и узбекский (переключатель RU / O'Z / EN в шапке и на странице входа). Язык запоминается; у каждого языка отдельная редактируемая база данных. По умолчанию — русский.
 
@@ -65,4 +66,4 @@ npm run build
 npm run test
 ```
 
-`npm run test` запускает smoke-тест в Chrome через Playwright (проверка загрузки страниц, авторизации, CRUD, сохранения после перезагрузки, перетаскивания игроков и адаптивности). Тест рассчитан на локальный режим (без Supabase) и использует демо-доступ `admin / titans2026`.
+`npm run test` запускает smoke-тест в Chrome через Playwright (проверка загрузки страниц, авторизации, CRUD, сохранения после перезагрузки, перетаскивания игроков и адаптивности). Тест рассчитан на локальный режим (без Neon) и использует демо-доступ `admin / titans2026`.

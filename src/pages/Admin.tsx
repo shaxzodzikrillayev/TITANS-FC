@@ -204,7 +204,7 @@ export function Admin() {
 
             {tab === 'system' && (
               <div className="panel">
-                <div className="panel__head"><div><h2>{t('Database')}</h2><p>{t('All data is stored in Supabase and synced between devices.')}</p></div></div>
+                <div className="panel__head"><div><h2>{t('Database')}</h2><p>{t('All data is stored in Neon and synced between devices.')}</p></div></div>
                 <div className="db-stats">
                   <div><UsersRound size={20} /><strong>{data.players.length}</strong><span>{t('Players')}</span></div>
                   <div><Newspaper size={20} /><strong>{data.news.length}</strong><span>{t('News')}</span></div>

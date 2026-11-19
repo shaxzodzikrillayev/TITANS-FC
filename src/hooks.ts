@@ -13,7 +13,7 @@ export function useData<T>(selector: () => T): T {
   return value;
 }
 
-/** True once the active language has finished loading from Supabase. */
+/** True once the active language has finished loading from Neon. */
 export function useHydration(): boolean {
   const [ready, setReady] = useState(() => isHydrated());
   useEffect(() => {
