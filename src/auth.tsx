@@ -2,9 +2,24 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { syncAll } from './db';
 import { clearSession, readSession, writeSession } from './session';
 
-const ADMIN_LOGIN = (import.meta.env.VITE_ADMIN_LOGIN as string | undefined) ?? 'admin';
-const ADMIN_PASSWORD = (import.meta.env.VITE_ADMIN_PASSWORD as string | undefined) ?? 'titans2026';
 const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL as string | undefined) ?? 'admin@titansfc.local';
+
+// Fallback credentials are stored only as SHA-256 digests, so the deployed
+// static bundle never contains the password in plain text.
+const AUTH_SALT = 'titans-fc-admin-v1';
+const ADMIN_HASHES = new Set([
+  '284155f0773f0ab087da8838f71dc596e540b6f20367a2a7c3be8a280581222a',
+  'e4d204a06a3f310b9553639a292199df7d7b1b70e3d56d6eeb9bf23f55b1aa30',
+  '0d96fee1c82608d475314a6b34fca18db0572d5613022cd0ecc9f878dac7c5fe',
+]);
+
+async function matchesAdmin(name: string, password: string): Promise<boolean> {
+  if (!globalThis.crypto?.subtle) return false;
+  const bytes = new TextEncoder().encode(`${AUTH_SALT}:${name}:${password}`);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  return ADMIN_HASHES.has(hex);
+}
 
 export interface AuthUser {
   name: string;
@@ -44,8 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (name: string, password: string): Promise<boolean> => {
     const value = name.trim();
-    const knownName = value === ADMIN_LOGIN || value === ADMIN_EMAIL || value === ADMIN_EMAIL.split('@')[0];
-    if (!knownName || password !== ADMIN_PASSWORD) return false;
+    if (!(await matchesAdmin(value, password))) return false;
 
     writeSession(value);
     setUser({ name: value, email: ADMIN_EMAIL });
